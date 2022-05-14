@@ -1,0 +1,74 @@
+---
+title: "Sppore Efficiency"
+author: "Canan Karakoç and Jay T. Lennon"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+header-includes:
+   - \usepackage{array}
+output: pdf_document
+geometry: margin=2.54cm
+---
+
+What's the distribution of sporulation efficiency 
+
+```{r}
+rm(list=ls())
+getwd()
+setwd("~/GitHub/SporeCosts")
+```
+
+Load package for writing figures
+```{r}
+require("png")
+require("grid")
+```
+
+# Distribution of sporulation efficiency
+Collected data from literature on sporulation efficiency, i.e., the number of cells in popultions that undergo sporulation
+
+# Load data
+```{r}
+eff <- read.csv("~/GitHub/SporeCosts/data/efficiency.csv")
+```
+
+# Make kernel density plots
+```{r}
+eff.kern <- density(eff$efficiency) # bw = nrd, ucv, bcv, SJ-ste
+eff.kern <- density(eff$efficiency, bw = "nrd0", adjust = 1.25)
+
+png(filename="~/GitHub/SporeCosts/figures/efficiency.png",
+    width = 1200, height = 1200, res = 96*2)
+
+plot.new()
+par(mar = c(7, 7, 5, 7))
+plot(eff.kern, main = NA, xaxt = "n", yaxt = "n", cex.lab = 1.5, ylab = "",
+     xlab = "", xlim = c(-20, 125), ylim = c(0, 0.015), lwd = 3, lty = 2, col = "red")
+box(lwd=2)
+
+mtext('Density', side = 2, outer = TRUE, cex = 1.5, 
+      line = -2, adj = 0.5)
+
+mtext('Sporulation efficiency', side = 1, outer = TRUE, 
+      cex = 1.5, line = -4, adj = 0.5)
+
+axis(side = 1, lwd.ticks = 2, cex.axis = 1.5, las = 1,
+    labels = c("0", "50", "100", "150"), at = c(0, 50, 100, 150))
+
+axis(side = 3, lwd.ticks = 2, cex.axis = 1.5, las = 1,
+    at = c(0, 50, 100, 150), labels = F)
+
+axis(side = 2, lwd.ticks = 2, cex.axis = 1.5, las = 1,
+    labels = c("0.000", "0.005","0.010", "0.015"), at = c(0, 0.005, 0.010, 0.015))
+
+axis(side = 4, lwd.ticks = 2, cex.axis = 1.5, las = 1,
+    at = c(0, 0.005, 0.010, 0.015), labels = F)
+
+
+# Close Plot Device
+dev.off()
+graphics.off()
+
+# Show Plot
+img <- readPNG("~/GitHub/SporeCosts/figures/efficiency.png")
+
+grid.raster(img)
+```
