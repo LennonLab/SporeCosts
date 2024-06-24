@@ -71,16 +71,17 @@ mytheme2 <- theme_bw()+
         axis.text.y.right = element_text(margin=margin(0,10,0,0)))
 
 # Color palette inspired by plots in Nature Reviews Cancer
-
 paletteNature <- c("Cinnabar" = "#E64B35", "Shakespeare" = "#4DBBD5",
   "PersianGreen" = "#00A087", "Chambray" = "#3C5488",
   "Apricot" = "#F39B7F", "WildBlueYonder" = "#8491B4",
   "MonteCarlo" = "#91D1C2", "Monza" = "#DC0000",
   "RomanCoffee" = "#7E6148", "Sandrift" = "#B09C85")
 
-setwd("~/GitHub/sporeCostsVer2")
+# Color blind palette
+cbpalette <- c("#0072B2", "#D55E00","#009E73", "#CC79A7", "#56B4E9", "#999999", "#F0E442", "#000000")
 
-# Data 
+setwd("~/GitHub/SporeCosts")
+
 ######################
 # Data
 ######################
@@ -130,7 +131,7 @@ germination6   <- read.table("./germinationData/SwargeEtAl_onlyNewProteins.csv",
 sporulation1   <- read.table("./otherData/TuEtAll_Sporulation_ProteinExpression.csv", sep = ",", header = T) 
 
 # Sporulation efficiency
-efficiency     <- read.table("./otherData/efficiency.csv", sep = ",", dec = "," , header = T, stringsAsFactors = F)
+efficiencyEmp     <- read.table("./otherData/efficiency.csv", sep = ",", dec = "," , header = T, stringsAsFactors = F)
 
 # COGs - Galperin
 cogs_dat_gene  <- read.table("./COGs_Galperin/geneMatrix.csv", sep = ",", dec = "." , header = T, stringsAsFactors = F)
@@ -948,9 +949,9 @@ delAllCosts2 <- deletionLibMergeRelevant %>%
 # Efficiency
 #####################
 ##########################################################################
-efficiency$efficiency <- as.numeric(efficiency$efficiency)
+efficiencyEmp$efficiency <- as.numeric(efficiencyEmp$efficiency)
   
-ggplot(efficiency, aes(efficiency))+
+ggplot(efficiencyEmp, aes(efficiency))+
   geom_density()+
   xlab("Sporulation efficiency")+
   ylab("Frequency")+
@@ -959,9 +960,9 @@ ggplot(efficiency, aes(efficiency))+
   mytheme
 
 library(truncnorm)
-fitE   <- density(efficiency$efficiency, from = 0, to = 100)
+fitE   <- density(efficiencyEmp$efficiency, from = 0, to = 100)
 N     <- 1e6
-x.new <- rtruncnorm(a = 0, b = 100, N, sample(efficiency$efficiency, size = N, replace = TRUE))
+x.new <- rtruncnorm(a = 0, b = 100, N, sample(efficiencyEmp$efficiency, size = N, replace = TRUE))
 plot(density(x.new, bw = fitE$bw))
 
 densityPlot <- as.data.frame(x.new)
@@ -976,16 +977,15 @@ means$lower = means$M-means$error
 
 ### Figure Efficiency ###
 efficiencyPlot <- ggplot(densityPlot, aes(x = x.new))+
-  geom_density(alpha = 0.1, linewidth = 0.8, bw = 11.35555)+
-  geom_vline(xintercept = c(means$M), linetype = 'dashed', color = "#A42820")+
-  annotate(geom = "label", x = 36, y = 0.013, color = "#A42820", fill = "white", label = "Median = 30.6%")+
+  geom_density(alpha = 0.1, linewidth = 0.8, bw = 11.35555, color = "#0072B2")+
+  geom_vline(xintercept = c(means$M), linetype = 'dashed', color = "black")+
+  annotate(geom = "label", x = 33, y = 0.005, color = "black", fill = "white", label = "Median = 30.6%")+
   labs(x="Sporulation efficiency", y = "Density")+
-  mytheme+
-  scale_x_continuous(limits = c(-30,130), sec.axis = dup_axis())+
+  mytheme+ scale_x_continuous(limits = c(-30,130), sec.axis = dup_axis())+
   scale_y_continuous(sec.axis = dup_axis())
 ### Figure Efficiency ###
 
-ggsave("~/GitHub/sporeCostsVer2/figures/efficiency.pdf", efficiencyPlot, height = 5, width = 6)
+ggsave("~/GitHub/sporeCosts/figures/efficiencyEmp.pdf", efficiencyPlot, width = 5.6, height = 4.4)
 ####################
 # EVOLUTION
 ####################
@@ -1839,17 +1839,23 @@ ggplot(cogs_dat_summary2, aes(y = Family, x = Spore.former))+
   geom_bar(stat = "identity")+
   facet_wrap (~Spore.former)
 
- # nucleotide costs of absent genes
+percentage_presentF <- percData %>%
+  filter(!spore_forming == "Unk")
 
-sum_percentage <- cogs_dat_gene_count[-c(1,3)] %>%
-  group_by(spore_former) %>%
-  gather(Column, Value, -spore_former) %>%
-  group_by(Column, Value, spore_former) %>%
-  summarise(Count = n()) %>%
-  mutate(Value = ifelse(Value == 1, "present", "absent")) %>%
-  unite(spore_former, Column, sep = "_", add = TRUE) 
-  spread(Column, spore_former, fill = 0)
+freq <- ggplot(percentage_presentF, aes(x = percentage_present))+
+  geom_histogram(aes(y=..density.., fill = spore_forming), alpha = 0.3) +
+    geom_density(aes(color=spore_forming), size = 1)+
+    scale_color_manual(values = c( "#0072B2", "#D55E00"))+
+    scale_fill_manual(values = c( "#0072B2", "#D55E00"))+
+  mytheme+
+  xlab("Present core genes (%)")+
+  ylab("Frequency")+
+  theme(legend.position = "none")+
+  geom_segment(aes(x = 63, y = 0.05 , xend = 68, yend = 0.05), color = "#0072B2", size =0.8) +
+  geom_segment(aes(x = 63, y = 0.045 , xend = 68, yend = 0.045), color = "#D55E00", size =0.8) +
+  annotate("text", x = 69, y = 0.05, size = 5, label = "non-spore-former",  hjust = 0) +
+  annotate("text", x = 69, y = 0.045, size = 5, label = "spore-former",  hjust = 0 )
+  
 
-
-
-
+ggsave("~/GitHub/SporeCosts/figures/coregenes.png", plot = freq, width = 5.6, height = 4.4, dpi = 300)
+ggsave("~/GitHub/SporeCosts/figures/coregenes.pdf", plot = freq, width = 5.6, height = 4.4, dpi = 300)
