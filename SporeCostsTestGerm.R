@@ -134,12 +134,14 @@ sporulation1   <- read.table("./otherData/TuEtAll_Sporulation_ProteinExpression.
 efficiencyEmp     <- read.table("./otherData/efficiency.csv", sep = ",", dec = "," , header = T, stringsAsFactors = F)
 
 # COGs - Galperin
-cogs_dat_gene  <- read.table("./COGs_Galperin/geneMatrix.csv", sep = ",", dec = "." , header = T, stringsAsFactors = F)
-cogs_dat_sp    <- read.table("./COGs_Galperin/speciesMatrix.csv", sep = ",", dec = "." , header = T, stringsAsFactors = F)
 #replaced empty cells with 0
 cogs_dat_gene_count  <- read.table("./COGs_Galperin/Galperin2022_jb.00079-22-s0003.csv", sep = ",", dec = "." , header = T, stringsAsFactors = F)
 cogs_dat_summary     <- read.table("./COGs_Galperin/Galperin2022_jb.00079-22-s0002.csv", sep = ",", dec = "." , header = T, stringsAsFactors = F)
 
+#organized
+prot_count  <- read.table("./COGs_Galperin/geneMatrix_calc.csv", sep = ",", dec = "." , header = T, stringsAsFactors = F)
+meta_data   <- read.table("./COGs_Galperin/calc_meta.csv", sep = ",", dec = "." , header = T, stringsAsFactors = F)
+phylo_names <- read.table("./COGs_Galperin/phylo_names.csv", sep = ",", , dec = "." , header = T, stringsAsFactors = F )
                            ###########
 ###########################SPORULATION#####################################
                            ###########
@@ -950,13 +952,15 @@ delAllCosts2 <- deletionLibMergeRelevant %>%
 #####################
 ##########################################################################
 efficiencyEmp$efficiency <- as.numeric(efficiencyEmp$efficiency)
+  median(as.numeric(efficiencyEmp$efficiency))
   
 ggplot(efficiencyEmp, aes(efficiency))+
   geom_density()+
-  xlab("Sporulation efficiency")+
+  xlab("Sporulation efficiency (%)")+
   ylab("Frequency")+
   geom_vline(xintercept = 34.7, color = "#A42820", linetype = "dashed" )+
   coord_cartesian(ylim = c(0.0025, 0.0125))+
+  annotate(geom = "label", x = 33, y = 0.005, color ="black", fill = "white", label = "Median = 30%")+
   mytheme
 
 library(truncnorm)
@@ -1730,132 +1734,28 @@ ggsave("~/GitHub/sporeCostsVer2/figures/ratio.pdf", ratio, height = 4, width = 5
 # COGS
 #########################
 #########################################################################
-# Percentage of absent/present 
-cogs_dat_gene_cop <- cogs_dat_gene
-cogs_dat_sp_cop   <- cogs_dat_sp
+# Size of spore forming fraction 
+sum(cogs_dat_sp$Length_aa) #AA 57934 ~173802 total 
 
-percentage_present <- rowSums(cogs_dat_gene_count[3:237]==1, na.rm=FALSE)/ncol(cogs_dat_gene_count[3:237])*100
-percentage_absent  <- rowSums(cogs_dat_gene_count[3:237]==0, na.rm=FALSE)/ncol(cogs_dat_gene_count[3:237])*100
+#prot_count
+#meta_data
 
-percData <- cbind.data.frame(spore_forming = cogs_dat_gene_count$spore_former,  percentage_present, percentage_absent)
+#Total num. amino acids/organism 
+columns <-  names(prot_count[3:182])
 
-# ordination
-gene_mat <- cogs_dat_gene_cop[,10:246]
-sp_mat   <- cogs_dat_sp[,19:189]
+aa_number <- prot_count %>%
+  mutate(across(all_of(columns), ~ . * Length_aa)) %>%
+  summarise(across(all_of(columns), sum))
 
-distance_matrix1 <- vegdist(gene_mat, method = "jaccard", binary = TRUE, na.rm = TRUE)
-pco1 <- cmdscale(distance_matrix1, eig = T)
+# Transpose the summarized table
+transposed_sums <- t(aa_number)
+transposed_sums <- as_tibble(transposed_sums, rownames = "Organism_name")
 
-coordinates1 <- as.data.frame(pco1$points)
-combined_dist1 <- cbind.data.frame(cogs_dat_gene_cop[,1:9], PCoA1 = coordinates1$V1, 
-                                  PCoA2 = coordinates1$V2)
+result <- stringdist_inner_join(meta_data, transposed_sums,  by = "Organism_name", max_dist = 2, method = "lv") %>%
+  mutate(num_AA_lost = 57934-V1)
 
-ggplot(na.omit(combined_dist1), aes(x = PCoA1, y = PCoA2, color = sporulating, shape = Spo0A))+
-  geom_point(alpha = .5, size = 3)+
-  mytheme
-
-# ordination with genes
-distance_matrix2 <- vegdist(sp_mat, method = "jaccard", binary = TRUE, na.rm = TRUE)
-pco2 <- cmdscale(distance_matrix2, eig = T)
-
-coordinates2 <- as.data.frame(pco2$points)
-combined_dist2 <- cbind.data.frame(cogs_dat_sp_cop[,1:18], PCoA1 = coordinates2$V1, 
-                                   PCoA2 = coordinates2$V2)
-
-ggplot(na.omit(combined_dist2), aes(x = PCoA1, y = PCoA2, color = role))+
-  geom_point(alpha = .5, size = 3)+
-  mytheme
-
-# merge with cost data 
-merge_species <- combined_dist2 %>%
-  left_join(protSeqTidyAbun, by = "protID") %>%
-  mutate(aa_opportunitySum.filled = median(aa_opportunitySum, na.rm = T)) %>%
-  mutate(aa_directSum.filled = median(aa_directSum, na.rm = T)) %>%
-  mutate(abundance.filled = replace_na(abundance, 18)) %>%
-  mutate(gene_length.filled = replace_na(gene_length, 765)) %>%
-  mutate(protein_length.filled = replace_na(protein_length, 254))%>%
-  mutate(translationAll = abundance.filled*(1774445/1e6)) %>%
-  mutate(translationDirect = translationAll*aa_directSum.filled) %>% # ignoring protein degradation
-  mutate(translationOpportunity = translationAll*aa_opportunitySum.filled) %>%
-  mutate(translationTotal = translationDirect + translationOpportunity) %>%
-  mutate(transcriptionAll = (abundance.filled/1e2)*(1774445/1e6)*as.numeric(gene_length.filled)) %>%
-  mutate(transcriptionDirect = transcriptionAll*(10+(2*12*1))) %>% #assuming that mRNAs transcribed at least 1 hour
-  mutate(transcriptionOpportunity = transcriptionAll*31) %>%
-  mutate(transcriptionTotal = transcriptionDirect + transcriptionOpportunity) %>%
-  mutate(RepOpportunity = 2*as.numeric(gene_length.filled)*35) %>% #2 = doublestring  35 = nucleotide costs 
-  mutate(RepDirect = 2*as.numeric(gene_length.filled)*14) %>%
-  mutate(RepTotal = RepOpportunity+RepDirect) 
-
-# total costs   
-merge_species$costs = as.numeric(merge_species$transcriptionTotal)+ 
-    as.numeric(merge_species$translationTotal)+as.numeric(merge_species$RepTotal)
-
-# percentage in spore formers  
-ggplot(na.omit(merge_species), aes(x = PCoA1, y = PCoA2, color = role, size = log10(costs)))+
-  geom_point(alpha = .2)+
-  mytheme 
-
-ggplot(na.omit(merge_species), aes(x = PCoA1, y = PCoA2, color = role, size = Per_in_spore.formers))+
-  geom_point(alpha = .2)+
-  mytheme 
-
-# corelation costs vs. PCoA1
-ggplot(na.omit(merge_species), aes(x = log10(costs), y = PCoA1))+
-  geom_point(alpha = .2)+
-  mytheme
-
-coordinates2 <- as.data.frame(pco2$points)
-combined_dist2 <- cbind.data.frame(cogs_dat_sp_cop[,1:18], PCoA1 = coordinates2$V1, 
-                                   PCoA2 = coordinates2$V2)
-
-ggplot(na.omit(combined_dist2), aes(x = PCoA1, y = PCoA2, color = role))+
-  geom_point(alpha = .5, size = 3)+
-  mytheme
-
-#fraction present 
-percData %>%
-  filter(!spore_forming == "Unk") %>%
-ggplot(aes(x = spore_forming, y = percentage_present))+
+ggplot(result, aes(x = Spore_former, y = num_AA_lost)) +
   geom_boxplot()
-
-
-# Summaries
-
-cogs_dat_summary2 <- cogs_dat_summary %>%
-  filter(!Spore.former == "Unk") %>%
-  na.omit()
   
+###########################################################################
 
-ggplot(cogs_dat_summary2, aes(y = Genome.size..Mb, x = Spore.former))+
-         geom_boxplot()
-
-ggplot(cogs_dat_summary2, aes(y = Narrowly.conserved..out.of.74., x = Spore.former))+
-  geom_boxplot()
-
-ggplot(cogs_dat_summary2, aes(y = All.spore.COGs..out.of.237., x = Spore.former))+
-  geom_boxplot()
-
-ggplot(cogs_dat_summary2, aes(y = Family, x = Spore.former))+
-  geom_bar(stat = "identity")+
-  facet_wrap (~Spore.former)
-
-percentage_presentF <- percData %>%
-  filter(!spore_forming == "Unk")
-
-freq <- ggplot(percentage_presentF, aes(x = percentage_present))+
-  geom_histogram(aes(y=..density.., fill = spore_forming), alpha = 0.3) +
-    geom_density(aes(color=spore_forming), size = 1)+
-    scale_color_manual(values = c( "#0072B2", "#D55E00"))+
-    scale_fill_manual(values = c( "#0072B2", "#D55E00"))+
-  mytheme+
-  xlab("Present core genes (%)")+
-  ylab("Frequency")+
-  theme(legend.position = "none")+
-  geom_segment(aes(x = 63, y = 0.05 , xend = 68, yend = 0.05), color = "#0072B2", size =0.8) +
-  geom_segment(aes(x = 63, y = 0.045 , xend = 68, yend = 0.045), color = "#D55E00", size =0.8) +
-  annotate("text", x = 69, y = 0.05, size = 5, label = "non-spore-former",  hjust = 0) +
-  annotate("text", x = 69, y = 0.045, size = 5, label = "spore-former",  hjust = 0 )
-  
-
-ggsave("~/GitHub/SporeCosts/figures/coregenes.png", plot = freq, width = 5.6, height = 4.4, dpi = 300)
-ggsave("~/GitHub/SporeCosts/figures/coregenes.pdf", plot = freq, width = 5.6, height = 4.4, dpi = 300)
