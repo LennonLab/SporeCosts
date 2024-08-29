@@ -6,3 +6,7 @@
 figures/.DS_Store
 scripts/.DS_Store
 .DS_Store
+figures/.DS_Store
+data/cogs_fasta/
+data/cog_dict.pickle
+data/genome_analysis/

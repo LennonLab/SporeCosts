@@ -1,97 +1,67 @@
+import os
 import pandas as pd
 from ete3 import Tree
 
-# Load the Newick tree from the file
-tree_file_path = 'RAxML_parsimonyTree.output_tree'
-with open(tree_file_path, 'r') as file:
-    newick_tree = file.read()
 
-# Parse the Newick tree
-tree = Tree(newick_tree)
+data_directory = os.path.expanduser("~/GitHub/SporeCosts/data/")
+scripts_directory = os.path.expanduser("~/GitHub/SporeCosts/scripts/")
 
-# Read the taxon labels
-taxon_labels_file = 'taxon_labels.csv'
+tree_file_path = '%sribosomal_genes_aligned_concat.fasta.raxml.bestTree' % data_directory
+# Load the ML tree
+tree = Tree(tree_file_path)
+
+# Read taxon labels
+taxon_labels_file = '%staxon_labels.csv' % data_directory
 taxon_labels_df = pd.read_csv(taxon_labels_file)
 
-# Verify the content of taxon labels
-print("Taxon Labels DataFrame:")
-print(taxon_labels_df.head())
 
 # Read the identifier mapping
-mapping_df = pd.read_csv('identifier_mapping.txt', sep='\t', header=None, names=['Gene_ID', 'Genome_RibosomalGene'])
+mapping_df = pd.read_csv('%sidentifier_mapping.txt' % data_directory, sep='\t', header=None, names=['Gene_ID', 'Genome_RibosomalGene'])
 
 # Extract the Genome_ID from the Genome_RibosomalGene
 mapping_df['Genome_ID'] = mapping_df['Genome_RibosomalGene'].apply(lambda x: "_".join(x.split("_")[:2]))
-
-# Verify the content of the identifier mapping
-print("Identifier Mapping DataFrame:")
-print(mapping_df.head())
 
 # Merge the taxon labels with the identifier mapping
 taxon_labels_df['Genome_ID'] = taxon_labels_df['taxid'].apply(lambda x: f"genome_{x}")
 merged_df = pd.merge(taxon_labels_df, mapping_df, left_on='Genome_ID', right_on='Genome_ID', how='inner')
 
-# Verify the merged DataFrame
-print("Merged DataFrame:")
-print(merged_df.head())
-
 # Separate spore-formers and lost taxa
 spore_formers = merged_df[merged_df['spore_former'].str.strip() == 'spore-former']['Genome_ID'].unique().tolist()
 lost_taxa = merged_df[merged_df['spore_former'].str.strip() == 'lost']['Genome_ID'].unique().tolist()
 
-# Debugging statements
-print("Spore Formers:", spore_formers)
-print("Lost Taxa:", lost_taxa)
 
-# Function to calculate the average distance for each genome
-def calculate_average_distances(tree, taxa):
-    genome_distances = {}
-    for taxon in taxa:
-        ribosomal_genes = mapping_df[mapping_df['Genome_ID'] == taxon]['Gene_ID'].tolist()
-        total_distance = 0
-        count = 0
-        for gene in ribosomal_genes:
-            try:
-                distance = tree.get_distance(gene)
-                total_distance += distance
-                count += 1
-            except:
-                print(f"Error calculating distance for gene {gene} in taxon {taxon}")
-        if count > 0:
-            average_distance = total_distance / count
-            genome_distances[taxon] = average_distance
-        else:
-            print(f"No valid distances for taxon {taxon}")
-    return genome_distances
+# get intersection of lost_taxa and taxa that are in the tree
+tree_leaf_names = list(tree.get_leaf_names())
+tree_leaf_names = [str(x) for x in tree_leaf_names]
+spore_formers_tree = list(set(tree_leaf_names) & set(spore_formers))
+lost_taxa_tree = list(set(tree_leaf_names) & set(lost_taxa))
 
-# Calculate the average distances for spore-formers and lost taxa
-spore_former_distances = calculate_average_distances(tree, spore_formers)
-lost_taxa_distances = calculate_average_distances(tree, lost_taxa)
 
-# Function to calculate the distance from a lost taxon to the closest spore-former
-def calculate_distance_to_closest_sporeformer(lost_taxa_distances, spore_former_distances):
-    distances = []
-    for lost_taxon, lost_distance in lost_taxa_distances.items():
-        closest_distance = float('inf')
-        closest_spore_former = None
-        for spore_former, spore_distance in spore_former_distances.items():
-            distance = abs(lost_distance - spore_distance)
-            if distance < closest_distance:
-                closest_distance = distance
-                closest_spore_former = spore_former
-        distances.append((lost_taxon, closest_spore_former, closest_distance))
-    return distances
+# loop through each taxa that lost spore formation
+# identify the spore-forming taxon it lost spore formation from as the spore-forming taxon with the smallest phylogeneic distance
+# Identify the internal node for those two taxa (root)
+# Calculate the distance between non-spore-forming and internal node.
 
-# Calculate distances to closest spore-former for each lost taxon
-distances_to_closest_sporeformer = calculate_distance_to_closest_sporeformer(lost_taxa_distances, spore_former_distances)
 
-# Convert distances to a DataFrame
-distances_df = pd.DataFrame(distances_to_closest_sporeformer, columns=['Lost_Taxon', 'Closest_Spore_Former', 'Distance'])
+output_file = open('%sdistances_to_closest_sporeformer_bootstrap.csv' % data_directory, 'w')
+output_file.write(','.join(['Lost_taxon', 'Closest_Spore_Former', 'Distance']))
+output_file.write('\n')
 
-# Save the result to a CSV file
-distances_df.to_csv('distances_to_closest_sporeformer.csv', index=False)
+for lost_taxa_tree_i in lost_taxa_tree:
 
-# Display the DataFrame
-print("Distances to the closest spore-former have been calculated and saved to 'distances_to_closest_sporeformer.csv'.")
-print(distances_df.head())
+    dist_to_spore_i = [tree.get_distance(lost_taxa_tree_i, spore_formers_tree_j) for spore_formers_tree_j in spore_formers_tree ]
+    spore_formers_tree_min_i = spore_formers_tree[dist_to_spore_i.index(min(dist_to_spore_i))]
+    spore_formers_mrca_i = tree.get_common_ancestor(lost_taxa_tree_i, spore_formers_tree_min_i)
+    # spore_formers_mrca_i.get_topology_id()
+    dist_to_mrca_i = tree.get_distance(lost_taxa_tree_i, spore_formers_mrca_i)
+
+    output_file.write(','.join([lost_taxa_tree_i, spore_formers_tree_min_i, str(dist_to_mrca_i)]))
+    output_file.write('\n')
+
+
+
+
+
+output_file.close()
+
 
