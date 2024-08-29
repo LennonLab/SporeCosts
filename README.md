@@ -8,6 +8,8 @@ The flat files are formatted as follows:
 
 To parse the file you first split by tabs, then split the second object by commas to get the data array.
 
+Outgroup genome genome_562
+
 
 #### consumer_resource_spore_model.tsv
 - Line 1 = Hours
@@ -36,4 +38,7 @@ The neutral expectation (horizontal line) is 0.2668621700879765
 - Line 2 = Ratio of rates for lower Ne
 - Line 3 = Ratio of rates for higher Ne
 - Line 4 = Neutral expectation of ratio
+
+
+
 
